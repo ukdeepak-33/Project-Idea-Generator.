@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Idea Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f7fafc;
+        }
+        .container {
+            max-width: 800px;
+        }
+        #loading {
+            border-top: 4px solid #3b82f6;
+            border-right: 4px solid transparent;
+            border-bottom: 4px solid #3b82f6;
+            border-left: 4px solid transparent;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div class="container bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-6">Project Idea Generator</h1>
+        <p class="text-center text-gray-500 mb-8">Tell me your interests or a problem, and I'll generate a list of startup ideas for you.</p>
+
+        <div class="flex flex-col space-y-4">
+            <textarea
+                id="promptInput"
+                class="w-full h-32 p-4 text-gray-700 bg-gray-100 rounded-lg border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-300"
+                placeholder="e.g., An app that helps people learn to code, a tool for managing freelance projects, a solution for tracking carbon footprints..."
+            ></textarea>
+
+            <button
+                id="generateButton"
+                class="w-full px-6 py-3 text-lg font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors duration-300"
+            >
+                Generate Ideas
+            </button>
+        </div>
+
+        <div id="loading" class="w-8 h-8 rounded-full border-4 mx-auto mt-8 hidden"></div>
+
+        <div id="output" class="mt-8 border-t-2 border-gray-200 pt-6 space-y-6">
+            <p id="placeholder" class="text-center text-gray-400 italic">Your ideas will appear here...</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const promptInput = document.getElementById('promptInput');
+            const generateButton = document.getElementById('generateButton');
+            const outputDiv = document.getElementById('output');
+            const loadingSpinner = document.getElementById('loading');
+            const placeholderText = document.getElementById('placeholder');
+
+            // 1. **REPLACE THIS WITH YOUR API KEY**
+            const API_KEY = '__api_key'; 
+            
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+
+            generateButton.addEventListener('click', generateIdea);
+
+            async function generateIdea() {
+                const prompt = promptInput.value.trim();
+                if (!prompt) {
+                    alert('Please enter a topic or problem to generate ideas.');
+                    return;
+                }
+
+                // Show loading state
+                placeholderText.classList.add('hidden');
+                outputDiv.innerHTML = '';
+                loadingSpinner.classList.remove('hidden');
+                generateButton.disabled = true;
+
+                const userPrompt = `You are a creative startup idea generator. Your goal is to take a user's interest or problem and generate three unique and detailed project ideas. For each idea, provide a clear, concise name, a brief description of the problem it solves, and a list of 3-5 key features. The output must be in Markdown format, with each idea separated by a horizontal rule (---) and each feature as a bullet point.
+
+User's topic/problem: ${prompt}
+
+Example Output Format:
+
+### Idea Name
+**Problem:** This idea solves...
+**Features:**
+- Feature 1
+- Feature 2
+- Feature 3
+
+---
+
+### Another Idea Name
+...
+`;
+
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [{
+                                    text: userPrompt
+                                }]
+                            }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    const generatedText = data.candidates[0].content.parts[0].text;
+                    
+                    // Parse Markdown to HTML and display it
+                    const formattedHtml = parseMarkdownToHtml(generatedText);
+                    outputDiv.innerHTML = formattedHtml;
+
+                } catch (error) {
+                    outputDiv.innerHTML = `<p class="text-red-500 text-center">An error occurred: ${error.message}. Please check your API key and try again.</p>`;
+                    console.error('Error:', error);
+                } finally {
+                    // Hide loading state
+                    loadingSpinner.classList.add('hidden');
+                    generateButton.disabled = false;
+                }
+            }
+
+            function parseMarkdownToHtml(markdown) {
+                // A simple Markdown parser for this specific use case
+                let html = markdown
+                    .replace(/^### (.*$)/gim, '<h3 class="text-2xl font-bold text-gray-800 mt-6">$1</h3>')
+                    .replace(/^\*\*Problem:\*\*(.*)$/gim, '<p class="text-gray-600 mt-2"><strong>Problem:</strong>$1</p>')
+                    .replace(/^\*\*Features:\*\*/gim, '<p class="font-bold text-gray-600 mt-4">Features:</p>')
+                    .replace(/^- (.*$)/gim, '<li class="text-gray-600 ml-6 list-disc">$1</li>')
+                    .replace(/---/g, '<hr class="my-8 border-t-2 border-gray-300">');
+                
+                // Wrap lists in ul tags
+                let listHtml = '';
+                const lines = html.split('\n');
+                let inList = false;
+                for (const line of lines) {
+                    if (line.startsWith('<li')) {
+                        if (!inList) {
+                            listHtml += '<ul>';
+                            inList = true;
+                        }
+                        listHtml += line;
+                    } else {
+                        if (inList) {
+                            listHtml += '</ul>';
+                            inList = false;
+                        }
+                        listHtml += line;
+                    }
+                }
+                if (inList) {
+                    listHtml += '</ul>';
+                }
+
+                // Add a final ul to handle single lists at the end
+                if (listHtml.includes('<li>') && !listHtml.includes('<ul>')) {
+                    listHtml = '<ul>' + listHtml + '</ul>';
+                }
+
+                // Remove the extra `p` tag from the `**Features:**` line.
+                listHtml = listHtml.replace(/<p class="font-bold text-gray-600 mt-4">Features:<\/p><ul>/, '<p class="font-bold text-gray-600 mt-4">Features:</p><ul>');
+
+                return listHtml;
+            }
+        });
+    </script>
+
+</body>
+</html>
